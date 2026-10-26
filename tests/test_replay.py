@@ -23,8 +23,6 @@ def test_replay_scales_and_downsamples() -> None:
     assert len(norris["samples"]) == 6
     assert norris["colour"] == "FF8000"
     assert document["track"]
-<<<<<<< Updated upstream
-=======
     assert document["track_width_m"] == 14
 
 
@@ -169,4 +167,3 @@ def test_attach_telemetry_holds_a_fresh_reading() -> None:
     assert second["throttle"] == 80
     assert second["brake"] == 100
     assert second["drs"] == 0
->>>>>>> Stashed changes

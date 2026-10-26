@@ -92,11 +92,7 @@ def load_replay(session_key: int) -> dict:
     age = cache_max_age(session.get("date_end"))
     path = cache_directory() / f"replay-{session_key}.json"
     cached = _compiled(path, age)
-<<<<<<< Updated upstream
-    if cached is not None:
-=======
     if cached is not None and cached.get("view") == 5:
->>>>>>> Stashed changes
         return cached
     drivers = fetch("drivers", max_age_s=age, session_key=session_key)
     lap_rows = fetch("laps", max_age_s=age, session_key=session_key)
