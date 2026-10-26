@@ -318,31 +318,6 @@ function bindReplay(panel) {
 
 function paintReplayMessage(canvas, text) {
   const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "#221f1a";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#f4f1ea";
-  ctx.font = "18px ui-monospace, Menlo, Consolas, monospace";
-  ctx.fillText(text, 28, 48);
-}
-
-function paintReplay(canvas, data, t) {
-  const ctx = canvas.getContext("2d");
-  const width = canvas.width;
-  const height = canvas.height;
-  ctx.fillStyle = "#221f1a";
-  ctx.fillRect(0, 0, width, height);
-  const track = data.track || [];
-  const points = track.slice();
-  if (points.length < 2) {
-    (data.cars || []).forEach(function (car) {
-      const sample = sampleAt(car.samples, t);
-      if (sample) points.push([sample.x, sample.y]);
-    });
-  }
-  if (!points.length) return;
-=======
-function paintReplayMessage(canvas, text) {
-  const ctx = canvas.getContext("2d");
   if (canvas.width !== REF_W * 2 || canvas.height !== REF_H * 2) {
     canvas.width = REF_W * 2;
     canvas.height = REF_H * 2;
@@ -637,9 +612,9 @@ function paintReplay(canvas, data, t, focusCodes, speed) {
     }
   }
   (data.cars || []).forEach(function (car) {
-    const sample = sampleAt(car.samples, t);
-    if (!sample || sample.live === false || !fit) return;
-    const mapped = fit.px(sample.x, sample.y);
+    const placed = onTrack(data, car, t);
+    if (!placed || placed.live === false || !fit) return;
+    const mapped = fit.px(placed.x, placed.y);
     ctx.beginPath();
     ctx.arc(mapped[0], mapped[1], 3.3, 0, Math.PI * 2);
     ctx.fillStyle = cssColour(car.colour);
@@ -660,58 +635,6 @@ function fitTrack(track) {
     minY = Math.min(minY, point[1]);
     maxY = Math.max(maxY, point[1]);
   });
-  if (track.length > 1) {
-    minX -= 80;
-    maxX += 80;
-    minY -= 80;
-    maxY += 80;
-  }
-  const pad = 36;
-  const spanX = Math.max(maxX - minX, 1);
-  const spanY = Math.max(maxY - minY, 1);
-  const scale = Math.min((width - pad * 2) / spanX, (height - pad * 2) / spanY);
-  const usedX = spanX * scale;
-  const usedY = spanY * scale;
-  const offsetX = (width - usedX) / 2;
-  const offsetY = (height - usedY) / 2;
-  function px(x, y) {
-    const sx = offsetX + (x - minX) * scale;
-    const sy = offsetY + usedY - (y - minY) * scale;
-    return [sx, sy];
-  }
-  if (track.length > 1) {
-    const metres = data.track_width_m || 14;
-    const ribbon = Math.max(18, metres * scale);
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    track.forEach(function (point, index) {
-      const mapped = px(point[0], point[1]);
-      if (index === 0) ctx.moveTo(mapped[0], mapped[1]);
-      else ctx.lineTo(mapped[0], mapped[1]);
-    });
-    ctx.strokeStyle = "#0e0d0b";
-    ctx.lineWidth = ribbon + 8;
-    ctx.stroke();
-    ctx.strokeStyle = "#8a8376";
-    ctx.lineWidth = ribbon;
-    ctx.stroke();
-    ctx.strokeStyle = "#d9d0c2";
-    ctx.lineWidth = Math.max(2, ribbon * 0.12);
-    ctx.stroke();
-  }
-  (data.cars || []).forEach(function (car) {
-    const sample = sampleAt(car.samples, t);
-    if (!sample) return;
-    const mapped = px(sample.x, sample.y);
-    ctx.fillStyle = "#" + (car.colour || "f4f1ea");
-    ctx.beginPath();
-    ctx.arc(mapped[0], mapped[1], 5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#f4f1ea";
-    ctx.font = "11px ui-monospace, Menlo, Consolas, monospace";
-    ctx.fillText(car.code, mapped[0] + 7, mapped[1] - 7);
-=======
   const spanX = Math.max(maxX - minX, 1);
   const spanY = Math.max(maxY - minY, 1);
   const pad = Math.max(spanX, spanY) * 0.04;
@@ -719,10 +642,10 @@ function fitTrack(track) {
   maxX += pad;
   minY -= pad;
   maxY += pad;
-  const boxX = 176;
-  const boxY = 10;
-  const boxW = 700;
-  const boxH = 556;
+  const boxX = 214;
+  const boxY = 16;
+  const boxW = 652;
+  const boxH = 546;
   const scale = Math.min(boxW / (maxX - minX), boxH / (maxY - minY));
   const usedX = (maxX - minX) * scale;
   const usedY = (maxY - minY) * scale;
@@ -735,57 +658,159 @@ function fitTrack(track) {
   };
 }
 
+function onTrack(data, car, t) {
+  const samples = car.samples;
+  if (!samples || !samples.length) return null;
+  if (car._trackT == null || Math.abs(t - car._trackT) > 2) car._trackIndex = null;
+  car._trackT = t;
+  const bracket = bracketAt(samples, t);
+  if (!data._arc || !data.track || data.track.length < 2) {
+    return { x: bracket.left.x, y: bracket.left.y, live: bracket.live };
+  }
+  const left = projectOnto(data, bracket.left.x, bracket.left.y, car._trackIndex);
+  if (!bracket.right) {
+    const placed = pointAtArc(data, left.arc);
+    car._trackIndex = placed[2];
+    return { x: placed[0], y: placed[1], live: bracket.live };
+  }
+  const right = projectOnto(data, bracket.right.x, bracket.right.y, left.index);
+  const lap = data._lap || 1;
+  let delta = right.arc - left.arc;
+  if (delta < -lap * 0.5) delta += lap;
+  if (delta > lap * 0.5) delta -= lap;
+  const placed = pointAtArc(data, left.arc + delta * bracket.mix);
+  car._trackIndex = placed[2];
+  return { x: placed[0], y: placed[1], live: bracket.live };
+}
+
+function bracketAt(samples, t) {
+  const last = samples[samples.length - 1];
+  if (t <= samples[0].t) return { left: samples[0], right: null, mix: 0, live: true };
+  if (t >= last.t) return { left: last, right: null, mix: 0, live: t <= last.t + 12 };
+  let low = 0;
+  let high = samples.length - 1;
+  while (low + 1 < high) {
+    const mid = (low + high) >> 1;
+    if (samples[mid].t <= t) low = mid;
+    else high = mid;
+  }
+  const left = samples[low];
+  const right = samples[high];
+  return { left: left, right: right, mix: (t - left.t) / ((right.t - left.t) || 1), live: true };
+}
+
+function projectOnto(data, x, y, hint) {
+  const track = data.track;
+  const arc = data._arc;
+  const last = track.length - 1;
+  let bestI = 0;
+  let bestU = 0;
+  let bestD = Infinity;
+  function scan(from, to) {
+    for (let index = from; index < to; index += 1) {
+      const ax = track[index][0];
+      const ay = track[index][1];
+      const bx = track[index + 1][0];
+      const by = track[index + 1][1];
+      const dx = bx - ax;
+      const dy = by - ay;
+      const len2 = dx * dx + dy * dy || 1;
+      let along = ((x - ax) * dx + (y - ay) * dy) / len2;
+      if (along < 0) along = 0;
+      else if (along > 1) along = 1;
+      const px = ax + dx * along;
+      const py = ay + dy * along;
+      const distance = (px - x) * (px - x) + (py - y) * (py - y);
+      if (distance < bestD) {
+        bestD = distance;
+        bestI = index;
+        bestU = along;
+      }
+    }
+  }
+  if (hint == null) scan(0, last);
+  else {
+    scan(Math.max(0, hint - 25), Math.min(last, hint + 80));
+    if (bestD > 35 * 35) {
+      bestD = Infinity;
+      scan(0, last);
+    }
+  }
+  const span = (arc[bestI + 1] || 0) - (arc[bestI] || 0);
+  return { index: bestI, arc: (arc[bestI] || 0) + bestU * span };
+}
+
+function pointAtArc(data, distance) {
+  const arc = data._arc;
+  const track = data.track;
+  const lap = data._lap || 1;
+  let along = distance % lap;
+  if (along < 0) along += lap;
+  let low = 0;
+  let high = arc.length - 1;
+  while (low + 1 < high) {
+    const mid = (low + high) >> 1;
+    if (arc[mid] <= along) low = mid;
+    else high = mid;
+  }
+  const span = (arc[high] - arc[low]) || 1;
+  const mix = Math.max(0, Math.min(1, (along - arc[low]) / span));
+  const start = track[low];
+  const end = track[high] || start;
+  return [
+    start[0] + (end[0] - start[0]) * mix,
+    start[1] + (end[1] - start[1]) * mix,
+    low,
+  ];
+}
+
 function paintHud(ctx, data, t, focusCodes, speed) {
   const rows = standings(data, t);
   const leader = rows.length ? rows[0].car : null;
   const lapNumber = leader ? valueAt(leader.laps, t, "n") : null;
   const total = data.lap_total;
+  const left = 12;
   ctx.fillStyle = "#f4f4f4";
   ctx.font = "bold 15px Arial, Helvetica, sans-serif";
   ctx.textBaseline = "top";
-  ctx.fillText(lapNumber ? "Lap: " + lapNumber + (total ? "/" + total : "") : "Lap: —", 10, 22);
+  ctx.fillText(lapNumber ? "Lap: " + lapNumber + (total ? "/" + total : "") : "Lap: —", left, 14);
   const rate = Number(speed);
   ctx.font = "bold 13px Arial, Helvetica, sans-serif";
   ctx.fillText(
     "Race Time: " + formatHudTime(raceSeconds(data, t)) + " (x" + (Number.isFinite(rate) ? rate.toFixed(1) : "1.0") + ")",
-    10,
-    42
+    left,
+    36
   );
   ctx.font = "bold 13px Arial, Helvetica, sans-serif";
-  ctx.fillText("Weather", 10, 96);
+  ctx.fillText("Weather", left, 64);
   const weather = latestAt(data.weather, t) || (data.weather || [])[0] || null;
-  const lines = weather ? [
+  const lines = (weather ? [
     ["track", weather.track == null ? "" : "Track: " + weather.track + "°C"],
     ["air", weather.air == null ? "" : "Air: " + weather.air + "°C"],
     ["drop", weather.humidity == null ? "" : "Humidity: " + Math.round(weather.humidity) + "%"],
     ["wind", weather.wind == null ? "" : "Wind: " + (weather.wind * 3.6).toFixed(1) + " km/h" + (weather.wind_from ? " " + weather.wind_from : "")],
     ["rain", weather.rain == null ? "" : (weather.rain > 0 ? "Rain: " + weather.rain : "Rain: DRY")],
-  ] : [];
-  ctx.font = "11px Arial, Helvetica, sans-serif";
+  ] : []).filter(function (line) { return line[1]; });
+  ctx.font = "12px Arial, Helvetica, sans-serif";
   lines.forEach(function (line, index) {
-    if (!line[1]) return;
-    const y = 114 + index * 12;
-    drawWeatherIcon(ctx, line[0], 10, y);
+    const y = 86 + index * 16;
+    drawWeatherIcon(ctx, line[0], left, y);
     ctx.fillStyle = "#f2f2f2";
-    ctx.fillText(line[1], 26, y - 1);
+    ctx.fillText(line[1], left + 16, y);
   });
   const chosen = (focusCodes && focusCodes.length ? focusCodes : rows.slice(0, 3).map(function (row) { return row.car.code; }))
     .map(function (code) { return rows.find(function (row) { return row.car.code === code; }); })
     .filter(Boolean)
     .slice(0, 3);
-  [166, 279, 392].slice(0, chosen.length).forEach(function (top, index) {
-    drawDriverCard(ctx, data, chosen[index], rows, 4, top);
-  });
-  ctx.fillStyle = "#f2f2f2";
-  ctx.font = "12px Arial, Helvetica, sans-serif";
-  ["Controls:", "[SPACE] Pause/Resume", "[←/→] Rewind / FastForward", "[↑/↓] Speed +/- (0.5x, 1x, 2x, 4x)"].forEach(function (line, index) {
-    ctx.fillText(line, 10, 524 + index * 13);
+  const cardTop = 86 + lines.length * 16 + 18;
+  chosen.forEach(function (row, index) {
+    drawDriverCard(ctx, data, row, rows, left, cardTop + index * 118);
   });
   drawBoard(ctx, rows, focusCodes && focusCodes.length ? focusCodes[0] : (rows[0] && rows[0].car.code));
 }
 
 function drawDriverCard(ctx, data, row, rows, x, y) {
-  const width = 161;
+  const width = 190;
   const height = 108;
   const colour = cssColour(row.car.colour);
   ctx.fillStyle = "#000";
@@ -810,18 +835,17 @@ function drawDriverCard(ctx, data, row, rows, x, y) {
     behind ? "Behind " + gapLabel(data, row, behind, -1) : "Behind: N/A",
   ];
   ctx.fillStyle = "#f3f3f3";
+  ctx.font = "10px Arial, Helvetica, sans-serif";
   copy.forEach(function (line, index) {
-    ctx.font = "10px Arial, Helvetica, sans-serif";
-    if (ctx.measureText(line).width > 108) ctx.font = "9px Arial, Helvetica, sans-serif";
     ctx.fillText(line, x + 6, y + 24 + index * 13);
   });
-  drawPedal(ctx, x + 116, y + 26, sample && sample.throttle != null ? sample.throttle : 0, "#00ff00");
-  drawPedal(ctx, x + 140, y + 26, sample && sample.brake != null ? sample.brake : 0, "#ff2a2a");
+  drawPedal(ctx, x + 146, y + 26, sample && sample.throttle != null ? sample.throttle : 0, "#00ff00");
+  drawPedal(ctx, x + 172, y + 26, sample && sample.brake != null ? sample.brake : 0, "#ff2a2a");
   ctx.font = "8px Arial, Helvetica, sans-serif";
   ctx.fillStyle = "#dddddd";
   ctx.textAlign = "center";
-  ctx.fillText("THR", x + 121, y + 92);
-  ctx.fillText("BRK", x + 145, y + 92);
+  ctx.fillText("THR", x + 151, y + 70);
+  ctx.fillText("BRK", x + 177, y + 70);
   ctx.textAlign = "left";
 }
 
