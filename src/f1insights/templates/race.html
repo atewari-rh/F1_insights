@@ -125,7 +125,7 @@
 
   <section id="replay" class="replay" data-session="{{ race.session_key }}" tabindex="0">
     <h2>Track replay</h2>
-    <p class="quiet">Cars are drawn on the public location stream, scaled from tenths of a metre. It is the timing map used for race order, played back so a missed race can be scrubbed. Space pauses. Left and right step two seconds.</p>
+    <p class="quiet">Load replay reads the public location stream. The first time for a race can take a minute; the canvas counts the seconds while it reads. The ribbon is one racing lap from that stream, drawn wide enough to see the circuit. It is the timing map, not a surveyed kerb line. Space pauses. Left and right step two seconds.</p>
     <div class="replay-bar">
       <button type="button" id="replay-load">Load replay</button>
       <button type="button" id="replay-play" disabled>Play</button>

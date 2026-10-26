@@ -189,28 +189,43 @@ function bindReplay(panel) {
   }
 
   load.addEventListener("click", function () {
-    status.textContent = "Loading the location stream. The first time for a race reads every car.";
     load.disabled = true;
+    load.textContent = "Loading…";
+    panel.scrollIntoView({ block: "nearest" });
+    const started = Date.now();
+    paintReplayMessage(canvas, "Loading the circuit…");
+    status.textContent = "Reading every car. The first time for a race can take a minute.";
+    const timer = setInterval(function () {
+      const seconds = Math.round((Date.now() - started) / 1000);
+      const line = "Loading the circuit… " + seconds + "s";
+      status.textContent = "Reading every car (" + seconds + " s). The first time for a race can take a minute.";
+      paintReplayMessage(canvas, line);
+    }, 1000);
     fetch("/api/race/" + session + "/replay")
       .then(function (response) {
         if (!response.ok) throw new Error("Replay unavailable");
         return response.json();
       })
       .then(function (payload) {
+        clearInterval(timer);
         documentData = payload;
         t = 0;
         scrub.max = String(Math.max(0, Math.round(payload.duration_s * 10)));
         scrub.disabled = false;
         play.disabled = !payload.cars.length;
+        load.textContent = "Loaded";
         status.textContent = payload.cars.length
-          ? payload.cars.length + " cars, one sample every " + payload.step_s + " s. The line is the timing map."
+          ? payload.cars.length + " cars, one sample every " + payload.step_s + " s. The ribbon is one racing lap."
           : "No location samples for this session.";
         setClock();
         paintReplay(canvas, documentData, t);
       })
       .catch(function () {
+        clearInterval(timer);
         status.textContent = "The location stream could not be loaded.";
         load.disabled = false;
+        load.textContent = "Load replay";
+        paintReplayMessage(canvas, "The location stream could not be loaded.");
       });
   });
 
@@ -245,17 +260,29 @@ function bindReplay(panel) {
   });
 }
 
+function paintReplayMessage(canvas, text) {
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#221f1a";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#f4f1ea";
+  ctx.font = "18px ui-monospace, Menlo, Consolas, monospace";
+  ctx.fillText(text, 28, 48);
+}
+
 function paintReplay(canvas, data, t) {
   const ctx = canvas.getContext("2d");
   const width = canvas.width;
   const height = canvas.height;
   ctx.fillStyle = "#221f1a";
   ctx.fillRect(0, 0, width, height);
-  const points = (data.track || []).slice();
-  (data.cars || []).forEach(function (car) {
-    const sample = sampleAt(car.samples, t);
-    if (sample) points.push([sample.x, sample.y]);
-  });
+  const track = data.track || [];
+  const points = track.slice();
+  if (points.length < 2) {
+    (data.cars || []).forEach(function (car) {
+      const sample = sampleAt(car.samples, t);
+      if (sample) points.push([sample.x, sample.y]);
+    });
+  }
   if (!points.length) return;
   let minX = Infinity;
   let maxX = -Infinity;
@@ -267,24 +294,46 @@ function paintReplay(canvas, data, t) {
     minY = Math.min(minY, point[1]);
     maxY = Math.max(maxY, point[1]);
   });
-  const pad = 24;
+  if (track.length > 1) {
+    minX -= 80;
+    maxX += 80;
+    minY -= 80;
+    maxY += 80;
+  }
+  const pad = 36;
   const spanX = Math.max(maxX - minX, 1);
   const spanY = Math.max(maxY - minY, 1);
   const scale = Math.min((width - pad * 2) / spanX, (height - pad * 2) / spanY);
+  const usedX = spanX * scale;
+  const usedY = spanY * scale;
+  const offsetX = (width - usedX) / 2;
+  const offsetY = (height - usedY) / 2;
   function px(x, y) {
-    const sx = pad + (x - minX) * scale;
-    const sy = height - pad - (y - minY) * scale;
+    const sx = offsetX + (x - minX) * scale;
+    const sy = offsetY + usedY - (y - minY) * scale;
     return [sx, sy];
   }
-  ctx.strokeStyle = "#6d675c";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  (data.track || []).forEach(function (point, index) {
-    const mapped = px(point[0], point[1]);
-    if (index === 0) ctx.moveTo(mapped[0], mapped[1]);
-    else ctx.lineTo(mapped[0], mapped[1]);
-  });
-  ctx.stroke();
+  if (track.length > 1) {
+    const metres = data.track_width_m || 14;
+    const ribbon = Math.max(18, metres * scale);
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    track.forEach(function (point, index) {
+      const mapped = px(point[0], point[1]);
+      if (index === 0) ctx.moveTo(mapped[0], mapped[1]);
+      else ctx.lineTo(mapped[0], mapped[1]);
+    });
+    ctx.strokeStyle = "#0e0d0b";
+    ctx.lineWidth = ribbon + 8;
+    ctx.stroke();
+    ctx.strokeStyle = "#8a8376";
+    ctx.lineWidth = ribbon;
+    ctx.stroke();
+    ctx.strokeStyle = "#d9d0c2";
+    ctx.lineWidth = Math.max(2, ribbon * 0.12);
+    ctx.stroke();
+  }
   (data.cars || []).forEach(function (car) {
     const sample = sampleAt(car.samples, t);
     if (!sample) return;
