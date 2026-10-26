@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Unavailable · F1 Insights{% endblock %}
+{% block main %}
+<section class="intro">
+  <h1>This page could not be loaded.</h1>
+  <p class="deck">{{ message }}</p>
+  <p><a href="/?year={{ year }}">Back to the season</a></p>
+</section>
+{% endblock %}

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}{{ board.year }} season · F1 Insights{% endblock %}
+{% block main %}
+<section class="intro">
+  <p class="kicker">{{ board.year }} season</p>
+  <h1>Every round, then the whole race.</h1>
+  <p class="deck">Open a grand prix for the classification, qualifying, every lap, the pits, the weather, and the race-control log. On-track passes open in f1-debrief, on one shared ruler.</p>
+  <p class="note">{{ board.points_note }}</p>
+  {% for warning in board.warnings|default([]) %}<p class="warning">{{ warning }}</p>{% endfor %}
+</section>
+
+<div class="split">
+  <section>
+    <h2>Drivers</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>Driver points from published race and sprint results</caption>
+        <thead>
+          <tr><th>Pos</th><th>Driver</th><th class="num">Points</th><th class="num">Wins</th><th class="num">Starts</th></tr>
+        </thead>
+        <tbody>
+          {% for row in board.drivers %}
+          <tr>
+            <td class="num">{{ row.position }}</td>
+            <td><span class="chip" style="background:#{{ row.colour }}"></span>{{ row.code }} <span class="quiet">{{ row.name }}</span></td>
+            <td class="num">{{ row.points_label }}</td>
+            <td class="num">{{ row.wins }}</td>
+            <td class="num">{{ row.starts }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5">No results published for this season yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section>
+    <h2>Teams</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>Constructor points summed from the same results</caption>
+        <thead>
+          <tr><th>Pos</th><th>Team</th><th class="num">Points</th><th class="num">Wins</th></tr>
+        </thead>
+        <tbody>
+          {% for row in board.teams %}
+          <tr>
+            <td class="num">{{ row.position }}</td>
+            <td><span class="chip" style="background:#{{ row.colour }}"></span>{{ row.team }}</td>
+            <td class="num">{{ row.points_label }}</td>
+            <td class="num">{{ row.wins }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4">No team results yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<section>
+  <h2>Calendar</h2>
+  <ol class="calendar">
+    {% for meeting in board.meetings %}
+    <li>
+      {% if meeting.session_key %}
+      <a class="round" href="/race/{{ meeting.session_key }}">
+      {% else %}
+      <div class="round">
+      {% endif %}
+        <span class="round-no">{{ "%02d"|format(meeting.round) if meeting.round else "—" }}</span>
+        <span class="round-body">
+          <strong>{{ meeting.name }}</strong>
+          <span class="quiet">{{ meeting.location }}{% if meeting.country %} · {{ meeting.country }}{% endif %} · {{ meeting.when }}</span>
+          {% if meeting.cancelled %}<span class="pill">Cancelled</span>{% endif %}
+          {% if meeting.winner %}<span class="winner"><span class="chip" style="background:#{{ meeting.colour }}"></span>{{ meeting.winner_name or meeting.winner }}</span>{% endif %}
+          {% if meeting.sprint %}<span class="quiet">Sprint {{ meeting.sprint }}</span>{% endif %}
+        </span>
+      {% if meeting.session_key %}</a>{% else %}</div>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% endblock %}

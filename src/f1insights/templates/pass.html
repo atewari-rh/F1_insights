@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ card.title }} · F1 Insights{% endblock %}
+{% block main %}
+<article class="approach">
+  <p class="kicker"><a href="/race/{{ session_key }}">Back to the race</a></p>
+  <h1>{{ card.title }}</h1>
+  {% if card.recorded %}<p class="pill">Recorded fixture from f1-debrief</p>{% endif %}
+  <p class="deck">Both laps were aligned once with <code>align_laps</code>. Curvature of that shared line chose the window. The closure is how far the speed integral misses the official lap-time gap.</p>
+
+  <section class="card-stats">
+    <p><strong>{{ "%.0f"|format(card.start_m) }}–{{ "%.0f"|format(card.end_m) }} m</strong></p>
+    {% if card.pass_s_m is not none %}<p>Pass at {{ "%.0f"|format(card.pass_s_m) }} m</p>{% endif %}
+    {% if card.corner_index is not none %}
+    <p>Corner {{ card.corner_index }}, {{ card.corner_direction or "bend" }}{% if card.corner_radius_m is not none %}, map radius about {{ card.corner_radius_m }} m{% endif %}</p>
+    {% endif %}
+    <p class="confidence confidence-{{ card.confidence.level }}">Confidence {{ card.confidence.level }}</p>
+  </section>
+
+  <div class="table-wrap">
+    <table>
+      <caption>Brake onset and minimum speed inside the window</caption>
+      <thead>
+        <tr><th>Driver</th><th class="num">Brake m</th><th class="num">Apex km/h</th><th class="num">Apex m</th><th class="num">Official s</th><th class="num">Clock ms</th><th class="num">Integral ms</th></tr>
+      </thead>
+      <tbody>
+        {% for driver in card.drivers %}
+        {% set report = card.reports[loop.index0] %}
+        <tr>
+          <td><span class="chip" style="background:#{{ driver.colour }}"></span>{{ driver.lap_id }}</td>
+          <td class="num">{{ driver.brake_m if driver.brake_m is not none else "—" }}</td>
+          <td class="num">{{ driver.apex_speed_kph if driver.apex_speed_kph is not none else "—" }}</td>
+          <td class="num">{{ driver.apex_s_m if driver.apex_s_m is not none else "—" }}</td>
+          <td class="num">{{ report.official_label or "—" }}</td>
+          <td class="num">{{ report.timestamp_error_ms if report.timestamp_error_ms is not none else "—" }}</td>
+          <td class="num">{{ report.integrated_speed_error_ms if report.integrated_speed_error_ms is not none else "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <section>
+    <h2>Speed on the shared grid</h2>
+    <canvas id="trace-canvas" width="960" height="280"></canvas>
+    <script id="trace-data" type="application/json">{{ {"traces": card.traces, "brakes": card.drivers}|tojson }}</script>
+  </section>
+
+  <pre class="dossier">{{ card.text }}</pre>
+  <ul class="plain">
+    {% for reason in card.confidence.reasons %}<li>{{ reason }}</li>{% endfor %}
+  </ul>
+  {% if card.reports %}
+  <p class="quiet">The shared line is about {{ card.reports[0].reference_length_m }} m on the timing map. The integral column is each lap's own miss against its official time. Lap-time closure on the card is the miss of the gap between them{% if card.closure_error_ms is not none %}: {{ card.closure_error_ms }} ms{% endif %}.</p>
+  {% endif %}
+</article>
+{% endblock %}

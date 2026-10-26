@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+{% block title %}{{ race.name }} {{ race.year }} · F1 Insights{% endblock %}
+{% block main %}
+<article class="race">
+  <header class="race-head">
+    <p class="kicker">{{ race.year }} · {{ race.location }}{% if race.country %} · {{ race.country }}{% endif %} · {{ race.date_label }}</p>
+    <h1>{{ race.name }}</h1>
+    {% if race.official_name %}<p class="official">{{ race.official_name }}</p>{% endif %}
+    <p class="quiet">Times are circuit local, {{ race.time_label }}.</p>
+    {% if race.rounds %}
+    <label class="switcher">Round
+      <select id="round-switch" data-current="{{ race.session_key }}">
+        {% for round in race.rounds %}
+        <option value="/race/{{ round.session_key }}" {% if round.session_key == race.session_key %}selected{% endif %}>{{ round.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
+  </header>
+
+  <section class="lede">
+    {% for line in race.lede %}<p>{{ line }}</p>{% endfor %}
+    {% for warning in race.warnings %}<p class="warning">{{ warning }}</p>{% endfor %}
+  </section>
+
+  {% if race.recorded_pair %}
+  <p class="callout"><a href="/race/{{ race.session_key }}/pass/NOR/VER/0">Norris passing Verstappen, lap 41</a> is the recorded f1-debrief card. It opens from the fixture in that library, without downloading the laps again.</p>
+  {% endif %}
+
+  <section>
+    <h2>Classification</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>Race result. Time is the official race duration. A driver shown only as laps down has the sum of their own lap times. Qualifying position is the qualifying classification, before grid penalties.</caption>
+        <thead>
+          <tr>
+            <th class="num">Pos</th><th>Driver</th><th>Team</th><th class="num">Q</th>
+            <th class="num">Laps</th><th class="num">Gap</th><th class="num">Time</th><th class="num">Pts</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in race.classification %}
+          <tr>
+            <td class="num">{{ row.position if row.position is not none else "—" }}</td>
+            <td><span class="chip" style="background:#{{ row.colour }}"></span>{{ row.code }} <span class="quiet">{{ row.name }}</span></td>
+            <td>{{ row.team }}</td>
+            <td class="num">{{ row.grid if row.grid is not none else "—" }}</td>
+            <td class="num">{{ row.laps if row.laps is not none else "—" }}</td>
+            <td class="num">{{ row.gap }}</td>
+            <td class="num">{{ row.time }}</td>
+            <td class="num">{{ row.points }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8">No classification yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="facts">
+    {% if race.fastest %}
+    <article>
+      <h2>Fastest lap</h2>
+      <p class="fact"><span class="chip" style="background:#{{ race.fastest.colour }}"></span>{{ race.fastest.code }} · lap {{ race.fastest.lap }} · {{ race.fastest.time }}</p>
+      {% if race.fastest.st != "—" %}<p class="quiet">Speed trap on that lap {{ race.fastest.st }} km/h</p>{% endif %}
+    </article>
+    {% endif %}
+    {% if race.sectors %}
+    <article>
+      <h2>Best sectors</h2>
+      <ul class="plain">
+        {% for sector in race.sectors %}
+        <li>{{ sector.name }} {{ sector.time }} s · {{ sector.code }} lap {{ sector.lap }}</li>
+        {% endfor %}
+      </ul>
+    </article>
+    {% endif %}
+    {% if race.traps %}
+    <article>
+      <h2>Highest speeds</h2>
+      <ul class="plain">
+        {% for trap in race.traps %}
+        <li>{{ trap.name }} {{ trap.speed }} km/h · {{ trap.code }} lap {{ trap.lap }}</li>
+        {% endfor %}
+      </ul>
+    </article>
+    {% endif %}
+  </section>
+
+  {% if race.qualifying %}
+  <section>
+    <h2>Qualifying</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>Qualifying times. A blank session means the driver did not set a time in that segment.</caption>
+        <thead>
+          <tr><th class="num">Pos</th><th>Driver</th><th>Team</th><th class="num">Q1</th><th class="num">Q2</th><th class="num">Q3</th></tr>
+        </thead>
+        <tbody>
+          {% for row in race.qualifying %}
+          <tr>
+            <td class="num">{{ row.position }}</td>
+            <td><span class="chip" style="background:#{{ row.colour }}"></span>{{ row.code }}</td>
+            <td>{{ row.team }}</td>
+            <td class="num">{{ row.q1 }}</td>
+            <td class="num">{{ row.q2 }}</td>
+            <td class="num">{{ row.q3 }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if race.chart.laps %}
+  <section>
+    <h2>Position by lap</h2>
+    <p class="quiet">Position at each lap's start, from the position stream. Place 1 is the top of the chart.</p>
+    <div id="lap-chart" class="chart"></div>
+    <script id="chart-data" type="application/json">{{ race.chart|tojson }}</script>
+  </section>
+  {% endif %}
+
+  <section id="replay" class="replay" data-session="{{ race.session_key }}" tabindex="0">
+    <h2>Track replay</h2>
+    <p class="quiet">Cars are drawn on the public location stream, scaled from tenths of a metre. It is the timing map used for race order, played back so a missed race can be scrubbed. Space pauses. Left and right step two seconds.</p>
+    <div class="replay-bar">
+      <button type="button" id="replay-load">Load replay</button>
+      <button type="button" id="replay-play" disabled>Play</button>
+      <label>Speed
+        <select id="replay-rate">
+          <option value="1">1×</option>
+          <option value="4">4×</option>
+          <option value="16" selected>16×</option>
+          <option value="64">64×</option>
+        </select>
+      </label>
+      <input id="replay-scrub" type="range" min="0" max="0" value="0" disabled>
+      <span id="replay-clock">—</span>
+    </div>
+    <p id="replay-status" class="quiet"></p>
+    <canvas id="replay-canvas" width="960" height="540"></canvas>
+  </section>
+
+  {% if race.stints %}
+  <section>
+    <h2>Tyres</h2>
+    <ul class="stints">
+      {% for row in race.stints %}
+      <li>
+        <span class="stint-name"><span class="chip" style="background:#{{ row.colour }}"></span>{{ row.code }}</span>
+        <span class="stint-bar">
+          {% for stint in row.stints %}
+          <span class="tyre tyre-{{ stint.compound }}" style="width:{{ stint.width }}%" title="{{ stint.compound }} laps {{ stint.start }}–{{ stint.end }}">{{ stint.compound[0] }}</span>
+          {% endfor %}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <section>
+    <h2>On-track passes</h2>
+    <p class="quiet">{{ race.raw_swaps }} position swaps in the overtake feed. {{ race.on_track }} remain after f1-debrief drops pit stops and penalty messages. Open a pair for the shared-meter approach card.</p>
+    <div class="table-wrap">
+      <table>
+        <caption>Passes kept by f1-debrief</caption>
+        <thead>
+          <tr><th>Time</th><th class="num">Lap</th><th>Pass</th><th class="num">For</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for row in race.passes %}
+          <tr>
+            <td>{{ row.time }}</td>
+            <td class="num">{{ row.lap if row.lap is not none else "—" }}</td>
+            <td>{{ row.overtaking }} on {{ row.overtaken }}</td>
+            <td class="num">{{ row.position if row.position is not none else "—" }}</td>
+            <td><a href="/race/{{ race.session_key }}/pass/{{ row.overtaking }}/{{ row.overtaken }}/{{ row.index }}">Approach card</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5">No on-track passes in this session.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Pit stops</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>Pit times as published. Durations are seconds.</caption>
+        <thead>
+          <tr><th>Time</th><th>Driver</th><th class="num">Lap</th><th class="num">Stop</th><th class="num">Lane</th><th class="num">Total</th></tr>
+        </thead>
+        <tbody>
+          {% for row in race.pits %}
+          <tr>
+            <td>{{ row.time }}</td>
+            <td><span class="chip" style="background:#{{ row.colour }}"></span>{{ row.code }}</td>
+            <td class="num">{{ row.lap if row.lap is not none else "—" }}</td>
+            <td class="num">{{ row.stop }}</td>
+            <td class="num">{{ row.lane }}</td>
+            <td class="num">{{ row.total }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6">No pit stops published.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Race control</h2>
+    <div class="table-wrap log">
+      <table>
+        <caption>Every race-control message in the session</caption>
+        <thead>
+          <tr><th>Time</th><th class="num">Lap</th><th>Flag</th><th>Message</th></tr>
+        </thead>
+        <tbody>
+          {% for row in race.control %}
+          <tr class="tone-{{ row.tone }}">
+            <td>{{ row.time }}</td>
+            <td class="num">{{ row.lap if row.lap is not none else "—" }}</td>
+            <td>{{ row.flag or row.category }}</td>
+            <td>{{ row.code }} {{ row.message }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4">No race-control messages.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {% if race.weather %}
+  <section>
+    <h2>Weather</h2>
+    <p>First sample {{ race.weather.first.time }}: air {{ race.weather.first.air }}°C, track {{ race.weather.first.track }}°C, humidity {{ race.weather.first.humidity }}%, wind {{ race.weather.first.wind }} m/s. Last sample {{ race.weather.last.time }}: air {{ race.weather.last.air }}°C, track {{ race.weather.last.track }}°C.{% if race.weather.rain %} Rain was recorded.{% else %} No rainfall was recorded.{% endif %}</p>
+    <details>
+      <summary>{{ race.weather.samples|length }} weather samples</summary>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Time</th><th class="num">Air</th><th class="num">Track</th><th class="num">Humidity</th><th class="num">Wind</th><th class="num">Rain</th></tr></thead>
+          <tbody>
+            {% for row in race.weather.samples %}
+            <tr>
+              <td>{{ row.time }}</td>
+              <td class="num">{{ row.air }}</td>
+              <td class="num">{{ row.track }}</td>
+              <td class="num">{{ row.humidity }}</td>
+              <td class="num">{{ row.wind }}</td>
+              <td class="num">{{ row.rain }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+  {% endif %}
+
+  <section>
+    <h2>Every lap</h2>
+    {% for driver in race.drivers_detail %}
+    <details class="driver-laps">
+      <summary><span class="chip" style="background:#{{ driver.colour }}"></span>{{ driver.code }} <span class="quiet">{{ driver.name }} · {{ driver.team }} · {{ driver.laps|length }} laps</span></summary>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th class="num">Lap</th><th class="num">Time</th><th class="num">S1</th><th class="num">S2</th><th class="num">S3</th><th class="num">ST</th><th class="num">I1</th><th class="num">I2</th><th>Pit out</th></tr>
+          </thead>
+          <tbody>
+            {% for lap in driver.laps %}
+            <tr>
+              <td class="num">{{ lap.n }}</td>
+              <td class="num">{{ lap.time }}</td>
+              <td class="num">{{ lap.s1 }}</td>
+              <td class="num">{{ lap.s2 }}</td>
+              <td class="num">{{ lap.s3 }}</td>
+              <td class="num">{{ lap.st }}</td>
+              <td class="num">{{ lap.i1 }}</td>
+              <td class="num">{{ lap.i2 }}</td>
+              <td>{{ "Yes" if lap.pit else "" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% endfor %}
+  </section>
+</article>
+{% endblock %}
