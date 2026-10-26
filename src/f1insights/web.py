@@ -15,7 +15,15 @@ from f1debrief.openf1 import DebriefError
 from f1frame import F1FrameError
 from f1insights.cards import load_card
 from f1insights.dossier import load_race
-from f1insights.replay import build_replay
+from f1insights.replay import (
+    attach_telemetry,
+    build_replay,
+    busiest_driver,
+    compact_car,
+    drivers_by_laps,
+    enrich_replay,
+    has_open_drs,
+)
 from f1insights.season import board
 from f1insights.source import SourceError, cache_directory, cache_max_age, fetch
 
@@ -84,21 +92,53 @@ def load_replay(session_key: int) -> dict:
     age = cache_max_age(session.get("date_end"))
     path = cache_directory() / f"replay-{session_key}.json"
     cached = _compiled(path, age)
-    if cached is not None and "track_width_m" in cached:
+    if cached is not None and cached.get("view") == 5:
         return cached
     drivers = fetch("drivers", max_age_s=age, session_key=session_key)
+    lap_rows = fetch("laps", max_age_s=age, session_key=session_key)
+    rank = {number: index for index, number in enumerate(drivers_by_laps(lap_rows))}
 
-    def one(driver: dict) -> list:
+    def one(driver: dict) -> tuple:
         number = driver.get("driver_number")
         if not isinstance(number, int):
-            return []
-        return fetch("location", max_age_s=age, session_key=session_key, driver_number=number)
+            return None, [], []
+        return (
+            number,
+            fetch("location", max_age_s=age, session_key=session_key, driver_number=number),
+            fetch("car_data", max_age_s=age, session_key=session_key, driver_number=number),
+        )
 
     locations: list = []
+    series: dict[int, list] = {}
+    reference: int | None = None
+    car_rows: list = []
+    reference_rank = 10**9
+    reference_open = False
     with ThreadPoolExecutor(max_workers=6) as pool:
-        for rows in pool.map(one, drivers):
-            locations.extend(rows)
+        for number, located, raw in pool.map(one, drivers):
+            if number is None:
+                continue
+            locations.extend(located)
+            series[number] = compact_car(raw)
+            place = rank.get(number, 10**6)
+            opens = has_open_drs(raw)
+            if opens and (not reference_open or place < reference_rank):
+                reference, car_rows, reference_rank, reference_open = number, raw, place, True
+            elif not reference_open and place < reference_rank:
+                reference, car_rows, reference_rank = number, raw, place
+    if reference is None:
+        reference = busiest_driver(locations)
     document = build_replay(locations, drivers)
+    attach_telemetry(document, series, locations)
+    enrich_replay(
+        document,
+        locations=locations,
+        car_rows=car_rows,
+        positions=fetch("position", max_age_s=age, session_key=session_key),
+        laps=lap_rows,
+        weather=fetch("weather", max_age_s=age, session_key=session_key),
+        driver_number=reference,
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(document), encoding="utf-8")
     return document
