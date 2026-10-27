@@ -18,6 +18,85 @@
     {% endif %}
   </header>
 
+  {% if race.weather %}
+  <section class="wx-board" aria-label="Weather">
+    <div class="wx-top">
+      <div>
+        <h2>Weather</h2>
+        <p class="quiet">{{ race.weather.first.time }} to {{ race.weather.last.time }} · {{ race.weather.samples|length }} readings</p>
+      </div>
+      <p class="wx-state wx-state-{{ 'rain' if race.weather.rain else 'dry' }}">{{ race.weather.condition }}</p>
+    </div>
+    <div class="wx-tiles">
+      <article class="wx-tile">
+        <span>Track</span>
+        <strong>{{ race.weather.track.now }}<small>°C</small></strong>
+        {% if race.weather.track.shift %}<em class="wx-{{ race.weather.track.shift.tone }}">{{ race.weather.track.shift.text }}</em>{% endif %}
+        <p class="quiet">Peak {{ race.weather.track.peak }}°C</p>
+        <div class="wx-meter" aria-hidden="true"><i style="width:{{ race.weather.track.meter }}%"></i></div>
+      </article>
+      <article class="wx-tile">
+        <span>Air</span>
+        <strong>{{ race.weather.air.now }}<small>°C</small></strong>
+        {% if race.weather.air.shift %}<em class="wx-{{ race.weather.air.shift.tone }}">{{ race.weather.air.shift.text }}</em>{% endif %}
+        <p class="quiet">Peak {{ race.weather.air.peak }}°C</p>
+        <div class="wx-meter wx-meter-air" aria-hidden="true"><i style="width:{{ race.weather.air.meter }}%"></i></div>
+      </article>
+      <article class="wx-tile">
+        <span>Humidity</span>
+        <strong>{{ race.weather.humidity.now }}<small>%</small></strong>
+        <em class="wx-flat">At the last reading</em>
+        <div class="wx-meter wx-meter-humid" aria-hidden="true"><i style="width:{{ race.weather.humidity.meter }}%"></i></div>
+      </article>
+      <article class="wx-tile">
+        <span>Wind</span>
+        <strong>{{ race.weather.wind.now }}<small>m/s</small></strong>
+        <em class="wx-flat">
+          {% if race.weather.wind.degrees is not none %}
+          <i class="wx-arrow" style="transform: rotate({{ race.weather.wind.degrees }}deg)"></i>
+          From {{ race.weather.wind.from }} ·
+          {% endif %}
+          peak {{ race.weather.wind.peak }} m/s
+        </em>
+      </article>
+    </div>
+    {% if race.weather.trend %}
+    <figure class="wx-chart">
+      <svg viewBox="0 0 {{ race.weather.trend.width }} {{ race.weather.trend.height }}" role="img" aria-label="Track and air temperature across the session">
+        <path class="wx-fill" d="{{ race.weather.trend.fill }}"></path>
+        {% if race.weather.trend.air %}<path class="wx-air" d="{{ race.weather.trend.air }}"></path>{% endif %}
+        <path class="wx-track" d="{{ race.weather.trend.track }}"></path>
+      </svg>
+      <figcaption class="wx-legend">
+        <span class="wx-key wx-key-track">Track</span>
+        <span class="wx-key wx-key-air">Air</span>
+      </figcaption>
+    </figure>
+    {% endif %}
+    <details class="wx-more">
+      <summary>All {{ race.weather.samples|length }} readings</summary>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Time</th><th class="num">Air</th><th class="num">Track</th><th class="num">Humidity</th><th class="num">Wind</th><th>From</th><th class="num">Rain</th></tr></thead>
+          <tbody>
+            {% for row in race.weather.samples %}
+            <tr>
+              <td>{{ row.time }}</td>
+              <td class="num">{{ row.air }}</td>
+              <td class="num">{{ row.track }}</td>
+              <td class="num">{{ row.humidity }}</td>
+              <td class="num">{{ row.wind }}</td>
+              <td>{{ row.wind_from }}</td>
+              <td class="num">{{ row.rain }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+  {% endif %}
+
   <section class="lede">
     {% for line in race.lede %}<p>{{ line }}</p>{% endfor %}
     {% for warning in race.warnings %}<p class="warning">{{ warning }}</p>{% endfor %}
@@ -169,8 +248,8 @@
   </section>
   {% endif %}
 
-  <section>
-    <h2>On-track passes</h2>
+  <details class="fold">
+    <summary><h2>On-track passes</h2><span class="fold-count">{{ race.passes|length }}</span></summary>
     <p class="quiet">{{ race.raw_swaps }} position swaps in the overtake feed. {{ race.on_track }} remain after f1-debrief drops pit stops and penalty messages. Open a pair for the shared-meter approach card.</p>
     <div class="table-wrap">
       <table>
@@ -193,10 +272,10 @@
         </tbody>
       </table>
     </div>
-  </section>
+  </details>
 
-  <section>
-    <h2>Pit stops</h2>
+  <details class="fold">
+    <summary><h2>Pit stops</h2><span class="fold-count">{{ race.pits|length }}</span></summary>
     <div class="table-wrap">
       <table>
         <caption>Pit times as published. Durations are seconds.</caption>
@@ -219,10 +298,10 @@
         </tbody>
       </table>
     </div>
-  </section>
+  </details>
 
-  <section>
-    <h2>Race control</h2>
+  <details class="fold">
+    <summary><h2>Race control</h2><span class="fold-count">{{ race.control|length }}</span></summary>
     <div class="table-wrap log">
       <table>
         <caption>Every race-control message in the session</caption>
@@ -243,37 +322,10 @@
         </tbody>
       </table>
     </div>
-  </section>
+  </details>
 
-  {% if race.weather %}
-  <section>
-    <h2>Weather</h2>
-    <p>First sample {{ race.weather.first.time }}: air {{ race.weather.first.air }}°C, track {{ race.weather.first.track }}°C, humidity {{ race.weather.first.humidity }}%, wind {{ race.weather.first.wind }} m/s. Last sample {{ race.weather.last.time }}: air {{ race.weather.last.air }}°C, track {{ race.weather.last.track }}°C.{% if race.weather.rain %} Rain was recorded.{% else %} No rainfall was recorded.{% endif %}</p>
-    <details>
-      <summary>{{ race.weather.samples|length }} weather samples</summary>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Time</th><th class="num">Air</th><th class="num">Track</th><th class="num">Humidity</th><th class="num">Wind</th><th class="num">Rain</th></tr></thead>
-          <tbody>
-            {% for row in race.weather.samples %}
-            <tr>
-              <td>{{ row.time }}</td>
-              <td class="num">{{ row.air }}</td>
-              <td class="num">{{ row.track }}</td>
-              <td class="num">{{ row.humidity }}</td>
-              <td class="num">{{ row.wind }}</td>
-              <td class="num">{{ row.rain }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </details>
-  </section>
-  {% endif %}
-
-  <section>
-    <h2>Every lap</h2>
+  <details class="fold">
+    <summary><h2>Every lap</h2><span class="fold-count">{{ race.drivers_detail|length }} drivers</span></summary>
     {% for driver in race.drivers_detail %}
     <details class="driver-laps">
       <summary><span class="chip" style="background:#{{ driver.colour }}"></span>{{ driver.code }} <span class="quiet">{{ driver.name }} · {{ driver.team }} · {{ driver.laps|length }} laps</span></summary>
@@ -301,6 +353,6 @@
       </div>
     </details>
     {% endfor %}
-  </section>
+  </details>
 </article>
 {% endblock %}

@@ -71,11 +71,15 @@
       {% endif %}
         <span class="round-no">{{ "%02d"|format(meeting.round) if meeting.round else "—" }}</span>
         <span class="round-body">
-          <strong>{{ meeting.name }}</strong>
-          <span class="quiet">{{ meeting.location }}{% if meeting.country %} · {{ meeting.country }}{% endif %} · {{ meeting.when }}</span>
-          {% if meeting.cancelled %}<span class="pill">Cancelled</span>{% endif %}
-          {% if meeting.winner %}<span class="winner"><span class="chip" style="background:#{{ meeting.colour }}"></span>{{ meeting.winner_name or meeting.winner }}</span>{% endif %}
-          {% if meeting.sprint %}<span class="quiet">Sprint {{ meeting.sprint }}</span>{% endif %}
+          <strong class="round-name">{{ meeting.name }}</strong>
+          <span class="round-place quiet">{{ meeting.location }}{% if meeting.country %} · {{ meeting.country }}{% endif %}</span>
+          <span class="round-when quiet">{{ meeting.when }}</span>
+          <span class="winner">
+            {% if meeting.cancelled %}<span class="pill">Cancelled</span>
+            {% elif meeting.winner %}<span class="chip" style="background:#{{ meeting.colour }}"></span>{{ meeting.winner_name or meeting.winner }}
+            {% endif %}
+          </span>
+          <span class="round-sprint quiet">{% if meeting.sprint %}Sprint {{ meeting.sprint }}{% endif %}</span>
         </span>
       {% if meeting.session_key %}</a>{% else %}</div>{% endif %}
     </li>

@@ -4,26 +4,35 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}F1 Insights{% endblock %}</title>
-  <link rel="stylesheet" href="/static/app.css?v=8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Titillium+Web:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700&display=swap');
+  </style>
+  <link rel="stylesheet" href="/static/app.css?v=16">
 </head>
 <body>
   <header class="site">
-    <div class="site-title">
-      <a href="/?year={{ year }}">F1 Insights</a>
-      <p>The race you missed, from the public timing feed.</p>
+    <div class="site-bar">
+      <div class="site-title">
+        <a href="/?year={{ year }}"><span class="mark" aria-hidden="true"></span>F1 Insights</a>
+        <p>The race you missed, from the public timing feed.</p>
+      </div>
+      <nav class="years" aria-label="Season">
+        {% for item in years %}
+        <a href="/?year={{ item }}" {% if item == year %}aria-current="page"{% endif %}>{{ item }}</a>
+        {% endfor %}
+      </nav>
     </div>
-    <nav class="years" aria-label="Season">
-      {% for item in years %}
-      <a href="/?year={{ item }}" {% if item == year %}aria-current="page"{% endif %}>{{ item }}</a>
-      {% endfor %}
-    </nav>
   </header>
   <main>
     {% block main %}{% endblock %}
   </main>
   <footer class="site-foot">
-    <p>Results, laps, weather, and race control come from OpenF1. The approach card is <code>f1frame</code> and <code>f1-debrief</code>: one shared meter grid, then brake point, apex, and the lap-time closure. The position stream is one path, so neither the replay nor the card says who was on the inside.</p>
+    <div class="site-bar">
+      <p>Results, laps, weather, and race control come from OpenF1. The approach card is <code>f1frame</code> and <code>f1-debrief</code>: one shared meter grid, then brake point, apex, and the lap-time closure. The position stream is one path, so neither the replay nor the card says who was on the inside.</p>
+    </div>
   </footer>
-  <script src="/static/race.js?v=12"></script>
+  <script src="/static/race.js?v=14"></script>
 </body>
 </html>

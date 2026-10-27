@@ -426,6 +426,86 @@ def _control(control: list[dict], clock: Clock, by_number: dict[int, dict]) -> l
     return rows
 
 
+_COMPASS = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
+
+
+def _reading(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _figure(value: float | None, unit: str = "") -> str:
+    if value is None:
+        return "—"
+    rounded = round(value, 1)
+    text = str(int(rounded)) if rounded == int(rounded) else f"{rounded:.1f}"
+    return f"{text}{unit}"
+
+
+def _shift(start: float | None, end: float | None) -> dict | None:
+    if start is None or end is None:
+        return None
+    change = round(end - start, 1)
+    if change == 0:
+        return {"text": "Steady through the session", "tone": "flat"}
+    magnitude = str(int(abs(change))) if abs(change) == int(abs(change)) else f"{abs(change):.1f}"
+    sign = "+" if change > 0 else "−"
+    return {"text": f"{sign}{magnitude}° from the start", "tone": "up" if change > 0 else "down"}
+
+
+def _meter(value: float | None, low: float, high: float) -> int:
+    if value is None or high <= low:
+        return 0
+    return max(0, min(100, round((value - low) / (high - low) * 100)))
+
+
+def _compass(value: object) -> str | None:
+    degrees = _reading(value)
+    if degrees is None:
+        return None
+    return _COMPASS[int((degrees + 22.5) // 45) % 8]
+
+
+def _trend(air: list[float | None], track: list[float | None]) -> dict | None:
+    width, height, pad = 720, 86, 8
+    indexes = [index for index, (left, right) in enumerate(zip(air, track)) if left is not None or right is not None]
+    if len(indexes) < 2:
+        return None
+    if len(indexes) > 72:
+        step = (len(indexes) - 1) / 71
+        indexes = [indexes[round(slot * step)] for slot in range(72)]
+    found = [value for index in indexes for value in (air[index], track[index]) if value is not None]
+    low, high = min(found), max(found)
+    if high == low:
+        high = low + 1
+
+    def line(values: list[float | None]) -> str:
+        commands = []
+        drawing = False
+        for slot, index in enumerate(indexes):
+            value = values[index]
+            if value is None:
+                drawing = False
+                continue
+            x = pad + (slot / (len(indexes) - 1)) * (width - pad * 2)
+            y = pad + (1 - (value - low) / (high - low)) * (height - pad * 2)
+            commands.append(("L" if drawing else "M") + f"{x:.1f} {y:.1f}")
+            drawing = True
+        return " ".join(commands)
+
+    track_line = line(track)
+    if not track_line:
+        return None
+    return {
+        "width": width,
+        "height": height,
+        "air": line(air),
+        "track": track_line,
+        "fill": track_line + f" L{width - pad:.1f} {height - pad:.1f} L{pad:.1f} {height - pad:.1f} Z",
+    }
+
+
 def _weather(weather: list[dict], clock: Clock) -> dict | None:
     rows = [row for row in weather if row.get("date")]
     if not rows:
@@ -440,14 +520,52 @@ def _weather(weather: list[dict], clock: Clock) -> dict | None:
             "track": row.get("track_temperature"),
             "humidity": row.get("humidity"),
             "wind": row.get("wind_speed"),
+            "wind_from": _compass(row.get("wind_direction")) or "—",
             "rain": row.get("rainfall"),
         }
 
+    air = [_reading(row.get("air_temperature")) for row in rows]
+    track = [_reading(row.get("track_temperature")) for row in rows]
+    humidity = [_reading(row.get("humidity")) for row in rows]
+    wind = [_reading(row.get("wind_speed")) for row in rows]
+    latest = rows[-1]
+    heading = _reading(latest.get("wind_direction"))
+    track_now = track[-1]
+    air_now = air[-1]
+    humid_now = humidity[-1]
+    wind_now = wind[-1]
+    track_values = [value for value in track if value is not None]
+    air_values = [value for value in air if value is not None]
+    wind_values = [value for value in wind if value is not None]
     return {
         "rain": rain,
+        "condition": "Rain" if rain else "Dry",
         "first": sample(rows[0]),
         "last": sample(rows[-1]),
         "samples": [sample(row) for row in rows],
+        "track": {
+            "now": _figure(track_now),
+            "peak": _figure(max(track_values) if track_values else None),
+            "meter": _meter(track_now, 10, 60),
+            "shift": _shift(track[0], track_now),
+        },
+        "air": {
+            "now": _figure(air_now),
+            "peak": _figure(max(air_values) if air_values else None),
+            "meter": _meter(air_now, 5, 40),
+            "shift": _shift(air[0], air_now),
+        },
+        "humidity": {
+            "now": _figure(humid_now),
+            "meter": _meter(humid_now, 0, 100),
+        },
+        "wind": {
+            "now": _figure(wind_now),
+            "peak": _figure(max(wind_values) if wind_values else None),
+            "from": _compass(heading),
+            "degrees": None if heading is None else round(heading),
+        },
+        "trend": _trend(air, track),
     }
 
 

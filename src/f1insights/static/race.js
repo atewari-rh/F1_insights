@@ -8,7 +8,16 @@
 
   const chartNode = document.getElementById("chart-data");
   const chartHost = document.getElementById("lap-chart");
-  if (chartNode && chartHost) drawChart(JSON.parse(chartNode.textContent), chartHost);
+  if (chartNode && chartHost) {
+    const chartData = JSON.parse(chartNode.textContent);
+    const paintChart = function () { drawChart(chartData, chartHost); };
+    paintChart();
+    let chartFrame = 0;
+    window.addEventListener("resize", function () {
+      cancelAnimationFrame(chartFrame);
+      chartFrame = requestAnimationFrame(paintChart);
+    });
+  }
 
   const traceNode = document.getElementById("trace-data");
   const traceCanvas = document.getElementById("trace-canvas");
@@ -22,58 +31,151 @@ function drawChart(data, host) {
   const laps = data.laps || [];
   const series = data.series || [];
   if (!laps.length || !series.length) return;
+  host.replaceChildren();
   let places = 1;
   series.forEach(function (row) {
     (row.positions || []).forEach(function (value) {
       if (typeof value === "number" && value > places) places = value;
     });
   });
-  const width = Math.max(720, laps.length * 11 + 56);
-  const height = Math.max(240, places * 14 + 36);
-  const left = 36;
+  const box = getComputedStyle(host);
+  const pad = (parseFloat(box.paddingLeft) || 0) + (parseFloat(box.paddingRight) || 0);
+  const width = Math.max(320, Math.round((host.clientWidth || host.getBoundingClientRect().width || 720) - pad));
+  const left = 32;
+  const right = 48;
   const top = 16;
-  const plotW = width - left - 12;
-  const plotH = height - top - 20;
+  const bottom = 28;
+  const row = Math.max(15, Math.min(20, Math.round(380 / Math.max(places, 1))));
+  const plotW = Math.max(40, width - left - right);
+  const plotH = Math.max(places - 1, 1) * row;
+  const height = top + plotH + bottom;
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 " + width + " " + height);
-  svg.setAttribute("width", String(width));
-  svg.setAttribute("height", String(height));
+  svg.setAttribute("width", "100%");
   svg.setAttribute("role", "img");
   svg.setAttribute("aria-label", "Position of each driver at the start of each lap");
 
-  for (let place = 1; place <= places; place += Math.max(1, Math.round(places / 8))) {
-    const y = top + ((place - 1) / Math.max(places - 1, 1)) * plotH;
-    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    label.setAttribute("x", "4");
-    label.setAttribute("y", String(y + 4));
-    label.setAttribute("fill", "#5e584e");
-    label.setAttribute("font-size", "11");
-    label.textContent = String(place);
-    svg.appendChild(label);
+  function xOf(index) {
+    if (laps.length === 1) return left + plotW / 2;
+    return left + (index / (laps.length - 1)) * plotW;
+  }
+  function yOf(place) {
+    return top + ((place - 1) / Math.max(places - 1, 1)) * plotH;
+  }
+  function add(name, attrs) {
+    const node = document.createElementNS("http://www.w3.org/2000/svg", name);
+    Object.keys(attrs).forEach(function (key) { node.setAttribute(key, attrs[key]); });
+    svg.appendChild(node);
+    return node;
   }
 
+  for (let place = 1; place <= places; place += 1) {
+    const y = yOf(place);
+    add("line", {
+      x1: String(left),
+      x2: String(left + plotW),
+      y1: y.toFixed(1),
+      y2: y.toFixed(1),
+      stroke: "rgba(255,255,255,0.08)",
+      "stroke-width": "1"
+    });
+    add("text", {
+      x: String(left - 8),
+      y: (y + 4).toFixed(1),
+      fill: "#9b9ba3",
+      "font-size": "11",
+      "font-family": "Titillium Web, sans-serif",
+      "text-anchor": "end"
+    }).textContent = String(place);
+  }
+
+  const tick = Math.max(1, Math.round(laps.length / 8));
+  const ticks = [];
+  for (let lap = 1; lap <= laps.length; lap += tick) ticks.push(lap);
+  if (ticks[ticks.length - 1] !== laps.length) ticks.push(laps.length);
+  ticks.forEach(function (lap) {
+    const x = xOf(lap - 1);
+    add("line", {
+      x1: x.toFixed(1),
+      x2: x.toFixed(1),
+      y1: String(top),
+      y2: String(top + plotH),
+      stroke: "rgba(255,255,255,0.06)",
+      "stroke-width": "1"
+    });
+    add("text", {
+      x: x.toFixed(1),
+      y: String(height - 8),
+      fill: "#9b9ba3",
+      "font-size": "11",
+      "font-family": "Titillium Web, sans-serif",
+      "text-anchor": lap === 1 ? "start" : (lap === laps.length ? "end" : "middle")
+    }).textContent = String(lap);
+  });
+
+  const paths = [];
+  const tags = [];
   series.forEach(function (row) {
     const colour = "#" + (row.colour || "888888");
     let drawing = false;
     let path = "";
+    let lastIndex = -1;
+    let lastY = 0;
     (row.positions || []).forEach(function (value, index) {
       if (typeof value !== "number") {
         drawing = false;
         return;
       }
-      const x = left + (laps.length === 1 ? plotW / 2 : (index / (laps.length - 1)) * plotW);
-      const y = top + ((value - 1) / Math.max(places - 1, 1)) * plotH;
+      const x = xOf(index);
+      const y = yOf(value);
       path += (drawing ? " L" : " M") + x.toFixed(1) + " " + y.toFixed(1);
       drawing = true;
+      lastIndex = index;
+      lastY = y;
     });
     if (!path) return;
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    line.setAttribute("d", path.trim());
-    line.setAttribute("fill", "none");
-    line.setAttribute("stroke", colour);
-    line.setAttribute("stroke-width", "1.6");
-    svg.appendChild(line);
+    const line = add("path", {
+      d: path.trim(),
+      fill: "none",
+      stroke: colour,
+      "stroke-width": "2.2",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round"
+    });
+    paths.push(line);
+    if (lastIndex === laps.length - 1) tags.push({ code: row.code || "", colour: colour, y: lastY });
   });
+
+  tags.sort(function (a, b) { return a.y - b.y; });
+  let labelY = -999;
+  tags.forEach(function (tag) {
+    let y = tag.y;
+    if (y < labelY + 12) y = labelY + 12;
+    labelY = y;
+    add("text", {
+      x: String(left + plotW + 8),
+      y: (y + 4).toFixed(1),
+      fill: tag.colour,
+      "font-size": "11",
+      "font-family": "Titillium Web, sans-serif",
+      "font-weight": "700"
+    }).textContent = tag.code;
+  });
+
+  function paintFocus(active) {
+    paths.forEach(function (line) {
+      const on = !active || line === active;
+      line.setAttribute("opacity", on ? "1" : "0.16");
+      line.setAttribute("stroke-width", on && active ? "3" : "2.2");
+    });
+  }
+  paths.forEach(function (line) {
+    line.addEventListener("pointerenter", function () { paintFocus(line); });
+    line.addEventListener("pointerleave", function (event) {
+      if (!paths.includes(event.relatedTarget)) paintFocus(null);
+    });
+  });
+  svg.addEventListener("pointerleave", function () { paintFocus(null); });
   host.appendChild(svg);
 }
 
@@ -83,7 +185,8 @@ function drawTraces(data, canvas) {
   const ctx = canvas.getContext("2d");
   const width = canvas.width;
   const height = canvas.height;
-  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#1c1c24";
+  ctx.fillRect(0, 0, width, height);
   let minS = Infinity;
   let maxS = -Infinity;
   let minV = Infinity;
@@ -107,14 +210,14 @@ function drawTraces(data, canvas) {
   function yOf(speed) {
     return height - pad - ((speed - minV) / spanV) * (height - pad * 2);
   }
-  ctx.strokeStyle = "#d9d1c3";
+  ctx.strokeStyle = "rgba(255,255,255,0.28)";
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(pad, pad);
   ctx.lineTo(pad, height - pad);
   ctx.lineTo(width - pad, height - pad);
   ctx.stroke();
-  ctx.fillStyle = "#5e584e";
+  ctx.fillStyle = "#c8c8d0";
   ctx.font = "12px ui-monospace, Menlo, Consolas, monospace";
   ctx.fillText(Math.round(maxV) + " km/h", 4, pad + 4);
   ctx.fillText(Math.round(minS) + " m", pad, height - 8);
