@@ -176,8 +176,8 @@ def test_assemble_keeps_the_race_and_drops_a_pit_swap() -> None:
     assert dossier["passes"][0]["overtaking"] == "NOR"
     assert dossier["passes"][0]["index"] == 0
     assert dossier["passes"][0]["lap"] == 41
-    assert any("Qualifying position is not the penalty-adjusted grid." in line for line in dossier["lede"])
-    assert any("red flag" in line for line in dossier["lede"])
+    assert any("Qualifying position is not the penalty-adjusted grid." in card["text"] for card in dossier["lede"])
+    assert any("red flag" in card["text"] for card in dossier["lede"])
     assert dossier["fastest"]["code"] == "NOR"
     assert dossier["chart"]["laps"] == [1] or 41 in dossier["chart"]["laps"]
     assert dossier["stints"][0]["stints"][0]["compound"] == "MEDIUM"

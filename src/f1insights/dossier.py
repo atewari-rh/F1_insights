@@ -677,53 +677,120 @@ def _lede(
     weather: list[dict],
     quali_result: list[dict],
     by_number: dict[int, dict],
-) -> list[str]:
+) -> list[dict]:
+    del weather
     name = meeting.get("meeting_name") or "this race"
     place = session.get("location") or meeting.get("location") or ""
-    lines = []
+    cards: list[dict] = []
     winner = next((row for row in classification if row.get("position") == 1), None)
     second = next((row for row in classification if row.get("position") == 2), None)
     if winner:
+        where = f" at {place}" if place else ""
         gap = ""
+        runner = None
         if second and second["gap"] not in {"—", "DNF", "DNS", "DSQ"}:
             gap = f" {second['code']} finished {second['gap']}."
-        time = f" The winner's time was {winner['time']}." if winner.get("time") else ""
-        where = f" at {place}" if place else ""
-        lines.append(f"{winner['name'] or winner['code']} won the {session.get('year')} {name}{where}.{gap}{time}")
+            runner = {
+                "code": second.get("code") or "",
+                "name": second.get("name") or second.get("code") or "",
+                "colour": second.get("colour") or "888888",
+                "gap": second.get("gap") or "",
+            }
+        time = winner.get("time") or ""
+        time_sentence = f" The winner's time was {time}." if time and time != "—" else ""
+        cards.append(
+            {
+                "kind": "winner",
+                "kicker": "Winner",
+                "title": winner.get("name") or winner.get("code") or "",
+                "code": winner.get("code") or "",
+                "team": winner.get("team") or "",
+                "colour": winner.get("colour") or "888888",
+                "value": "" if time in {"", "—"} else time,
+                "runner": runner,
+                "text": f"{winner['name'] or winner['code']} won the {session.get('year')} {name}{where}.{gap}{time_sentence}",
+            }
+        )
     else:
-        lines.append(f"The {session.get('year')} {name} does not have a published result yet.")
+        cards.append(
+            {
+                "kind": "pending",
+                "kicker": "Result",
+                "title": "No published result yet",
+                "text": f"The {session.get('year')} {name} does not have a published result yet.",
+            }
+        )
     pole = next((row for row in quali_result if row.get("position") == 1), None)
     if pole and isinstance(pole.get("driver_number"), int):
         driver = by_number.get(int(pole["driver_number"]))
         times = [value for value in pole.get("duration") or [] if isinstance(value, (int, float))]
         pole_time = format_lap(times[-1]) if times else ""
         who = format_name((driver or {}).get("full_name")) or (driver or {}).get("name_acronym") or str(pole["driver_number"])
-        lines.append(f"{who} took pole{f' in {pole_time}' if pole_time != '—' else ''}. Qualifying position is not the penalty-adjusted grid.")
+        timed = f" in {pole_time}" if pole_time and pole_time != "—" else ""
+        cards.append(
+            {
+                "kind": "pole",
+                "kicker": "Pole",
+                "title": who,
+                "code": (driver or {}).get("name_acronym") or str(pole["driver_number"]),
+                "colour": (driver or {}).get("team_colour") or "888888",
+                "value": "" if not pole_time or pole_time == "—" else pole_time,
+                "note": "Qualifying position is not the penalty-adjusted grid.",
+                "text": f"{who} took pole{timed}. Qualifying position is not the penalty-adjusted grid.",
+            }
+        )
     if fastest:
-        lines.append(f"Fastest lap was {fastest['code']} on lap {fastest['lap']} in {fastest['time']}.")
+        trap = fastest.get("st") or ""
+        cards.append(
+            {
+                "kind": "fastest",
+                "kicker": "Fastest lap",
+                "title": fastest.get("name") or fastest.get("code") or "",
+                "code": fastest.get("code") or "",
+                "colour": fastest.get("colour") or "888888",
+                "value": fastest.get("time") or "",
+                "lap": fastest.get("lap"),
+                "trap": "" if trap in {"", "—"} else trap,
+                "text": f"Fastest lap was {fastest['code']} on lap {fastest['lap']} in {fastest['time']}.",
+            }
+        )
     notes = []
-    if any("SAFETY CAR" in str(row.get("message") or "").upper() for row in control):
+    flags = []
+    messages = [str(row.get("message") or "").upper() for row in control]
+    saw_vsc = any("VIRTUAL SAFETY CAR" in message or message.startswith("VSC") for message in messages)
+    saw_sc = any("SAFETY CAR" in message and "VIRTUAL" not in message for message in messages)
+    if saw_sc:
         notes.append("a safety car")
-    if any("VIRTUAL SAFETY CAR" in str(row.get("message") or "").upper() or str(row.get("message") or "").upper().startswith("VSC") for row in control):
+        flags.append({"label": "Safety car", "tone": "sc"})
+    if saw_vsc:
         notes.append("a virtual safety car")
+        flags.append({"label": "Virtual safety car", "tone": "vsc"})
     if any(str(row.get("flag") or "").upper() == "RED" or "RED FLAG" in str(row.get("message") or "").upper() for row in control):
         notes.append("a red flag")
+        flags.append({"label": "Red flag", "tone": "red"})
     if notes:
-        lines.append(f"Race control records {', '.join(notes)}.")
-    if raw_swaps:
-        lines.append(
-            f"The overtake feed has {raw_swaps} position swaps. f1-debrief keeps {on_track} after dropping pit stops and penalty messages."
+        cards.append(
+            {
+                "kind": "control",
+                "kicker": "Race control",
+                "flags": flags,
+                "text": f"Race control records {', '.join(notes)}.",
+            }
         )
-    if weather:
-        first = min(weather, key=lambda row: row.get("date") or "")
-        air = first.get("air_temperature")
-        track = first.get("track_temperature")
-        if isinstance(air, (int, float)) and isinstance(track, (int, float)):
-            rain = " Rain was recorded." if any(
-                isinstance(row.get("rainfall"), (int, float)) and row["rainfall"] > 0 for row in weather
-            ) else " No rainfall was recorded."
-            lines.append(f"Air {air:.0f}°C, track {track:.0f}°C at the first weather sample.{rain}")
-    return lines
+    if raw_swaps:
+        cards.append(
+            {
+                "kind": "passes",
+                "kicker": "On-track passes",
+                "value": str(on_track),
+                "feed": str(raw_swaps),
+                "text": (
+                    f"The overtake feed has {raw_swaps} position swaps. "
+                    f"f1-debrief keeps {on_track} after dropping pit stops and penalty messages."
+                ),
+            }
+        )
+    return cards
 
 
 def _tone(flag: str, message: str) -> str:

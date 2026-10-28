@@ -97,8 +97,63 @@
   </section>
   {% endif %}
 
-  <section class="lede">
-    {% for line in race.lede %}<p>{{ line }}</p>{% endfor %}
+  <section class="story" aria-label="Race story">
+    <div class="story-lead">
+      {% for card in race.lede %}
+        {% if card is string %}
+        <p class="story-plain">{{ card }}</p>
+        {% elif card.kind == "winner" %}
+        <article class="story-card story-winner" style="--team:#{{ card.colour }}">
+          <p class="story-kicker">{{ card.kicker }}</p>
+          <p class="story-name"><span class="chip" style="background:#{{ card.colour }}"></span>{{ card.title }}</p>
+          {% if card.team %}<p class="story-team">{{ card.team }}</p>{% endif %}
+          {% if card.value %}<p class="story-value">{{ card.value }}</p>{% endif %}
+          {% if card.runner %}
+          <p class="story-runner"><span class="chip" style="background:#{{ card.runner.colour }}"></span>P2 {{ card.runner.name }} <strong>{{ card.runner.gap }}</strong></p>
+          {% endif %}
+        </article>
+        {% elif card.kind == "pole" %}
+        <article class="story-card story-pole" style="--team:#{{ card.colour }}">
+          <p class="story-kicker">{{ card.kicker }}</p>
+          <p class="story-name"><span class="chip" style="background:#{{ card.colour }}"></span>{{ card.title }}</p>
+          {% if card.value %}<p class="story-value">{{ card.value }}</p>{% endif %}
+          <p class="story-note">{{ card.note }}</p>
+        </article>
+        {% elif card.kind == "pending" %}
+        <article class="story-card story-pending">
+          <p class="story-kicker">{{ card.kicker }}</p>
+          <p class="story-name">{{ card.title }}</p>
+        </article>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div class="story-facts">
+      {% for card in race.lede if card is mapping %}
+        {% if card.kind == "fastest" %}
+        <article class="story-card story-fastest" style="--team:#{{ card.colour }}">
+          <p class="story-kicker">{{ card.kicker }}</p>
+          <p class="story-name"><span class="chip" style="background:#{{ card.colour }}"></span>{{ card.title }}</p>
+          {% if card.value %}<p class="story-value">{{ card.value }}</p>{% endif %}
+          <p class="story-note">Lap {{ card.lap }}{% if card.trap %} · speed trap {{ card.trap }} km/h{% endif %}</p>
+        </article>
+        {% elif card.kind == "control" %}
+        <article class="story-card story-control">
+          <p class="story-kicker">{{ card.kicker }}</p>
+          <ul class="story-flags">
+            {% for flag in card.flags %}
+            <li class="story-flag story-flag-{{ flag.tone }}">{{ flag.label }}</li>
+            {% endfor %}
+          </ul>
+        </article>
+        {% elif card.kind == "passes" %}
+        <article class="story-card story-passes">
+          <p class="story-kicker">{{ card.kicker }}</p>
+          <p class="story-value">{{ card.value }}<small>kept</small></p>
+          <p class="story-note">{{ card.feed }} position swaps in the feed. Pit stops and penalty messages are left out.</p>
+        </article>
+        {% endif %}
+      {% endfor %}
+    </div>
     {% for warning in race.warnings %}<p class="warning">{{ warning }}</p>{% endfor %}
   </section>
 
